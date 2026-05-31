@@ -1,9 +1,5 @@
 /**
  * Florida Lotto Winner Alerts — Backend Server
- * - Manages all registered users and their tickets
- * - Checks FL Lotto results every Wed & Sat night
- * - Texts users ONLY when they win
- * - FL Lotto: 6 numbers (1-53)
  */
 
 const express = require("express");
@@ -15,9 +11,13 @@ const fs = require("fs");
 const app = express();
 app.use(express.json());
 
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || "";
-const TWILIO_AUTH_TOKEN  = process.env.TWILIO_AUTH_TOKEN  || "";
-const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || "";
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER;
+
+console.log("TWILIO_ACCOUNT_SID:", TWILIO_ACCOUNT_SID ? "SET" : "MISSING");
+console.log("TWILIO_AUTH_TOKEN:", TWILIO_AUTH_TOKEN ? "SET" : "MISSING");
+console.log("TWILIO_FROM_NUMBER:", TWILIO_FROM_NUMBER ? "SET" : "MISSING");
 
 const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
@@ -67,7 +67,6 @@ function buildWinMessage(draw, ticketResults, totalWon, hasJackpot) {
     weekday: "short", month: "short", day: "numeric"
   });
   const winningNums = draw.numbers.join("-");
-
   const lines = ticketResults
     .map((r, i) => {
       if (!r.prize) return null;
@@ -75,11 +74,9 @@ function buildWinMessage(draw, ticketResults, totalWon, hasJackpot) {
       return `  Ticket ${i+1}: +$${r.prize.toLocaleString()} (${r.matched} matched)`;
     })
     .filter(Boolean);
-
   const summary = hasJackpot
     ? "YOU HIT THE JACKPOT! Contact FL Lottery immediately!"
     : `Total: $${totalWon.toLocaleString()}`;
-
   return [
     `YOU WON! Florida Lotto — ${date}`,
     `Winning: ${winningNums}`,
@@ -101,7 +98,6 @@ async function sendSms(toPhone, message) {
 
 async function checkAllUsersAndNotify() {
   console.log(`\n[${new Date().toLocaleString()}] Checking FL Lotto results...`);
-
   let draw;
   try {
     draw = await fetchLatestDrawing();
@@ -110,24 +106,19 @@ async function checkAllUsersAndNotify() {
     console.error("Could not fetch results:", err.message);
     return;
   }
-
   const users = loadUsers();
   const phones = Object.keys(users);
   console.log(`Checking ${phones.length} registered users...`);
-
   let winnersCount = 0;
-
   for (const phone of phones) {
     const user = users[phone];
     if (!user.active) continue;
-
     const ticketResults = user.tickets.map(t => checkTicket(t, draw));
     const totalWon = ticketResults.reduce((s, r) => {
       if (!r.prize || r.prize === "JACKPOT") return s;
       return s + r.prize;
     }, 0);
     const hasJackpot = ticketResults.some(r => r.prize === "JACKPOT");
-
     if (totalWon > 0 || hasJackpot) {
       try {
         const message = buildWinMessage(draw, ticketResults, totalWon, hasJackpot);
@@ -139,11 +130,9 @@ async function checkAllUsersAndNotify() {
       }
     }
   }
-
   console.log(`Done. ${winnersCount} winner(s) notified.`);
 }
 
-// Wed & Sat at 11:15 PM Eastern (after 11:00 PM draw)
 cron.schedule("15 23 * * 3,6", checkAllUsersAndNotify, {
   timezone: "America/New_York"
 });
@@ -209,7 +198,8 @@ app.get("/health", (req, res) => {
   res.json({ status: "running", schedule: "Wed & Sat at 11:00 PM ET" });
 });
 
-app.listen(3000, () => {
-  console.log("Florida Lotto Winner Alerts server running on port 3000");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Florida Lotto Winner Alerts server running on port ${PORT}`);
   console.log("Schedule: Wednesday & Saturday at 11:00 PM Eastern");
 });
